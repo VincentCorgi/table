@@ -82,8 +82,23 @@ type ConsoleTableColumnBase<T> = {
   header: string;
   /** client adapter 的排序依據；同時決定表頭是否顯示排序鈕。 */
   sortValue?: (row: T) => string | number | null;
-  /** client adapter 的篩選值與搜尋依據；server 模式可省略。 */
+  /**
+   * client adapter 的篩選值，同時決定這一欄**有沒有篩選選單**：宣告了就會出
+   * 現在篩選面板裡，選項是這一欄所有出現過的值。所以只宣告在「值是一個小
+   * 的、封閉的集合」的欄位上——每一列都不一樣的欄位（摘要、名稱、IP）宣告
+   * 了會得到一份跟資料一樣長的選單。那種欄位要的是 `searchValue`。
+   */
   filterValue?: (row: T) => string;
+  /**
+   * 搜尋比對用的文字。**只影響搜尋，不會產生篩選選單。**
+   *
+   * 沒給時退回 `filterValue` → `sortValue`。分開的理由是這兩件事本來就不同：
+   * 稽核紀錄的「對象」要能被摘要文字搜到，但篩選要按對象**類型**分；一個欄
+   * 位只有一個 `filterValue` 時，這兩個需求只能滿足一個。
+   *
+   * 一欄都沒宣告過這三者的表格，搜尋框比對不到任何東西。
+   */
+  searchValue?: (row: T) => string;
   /**
    * 複製到剪貼簿時這一欄的純文字值。只有自訂 `cell` 的欄位需要給——
    * 有宣告 `editable` 的欄位表格自己算得出格式化後的文字。

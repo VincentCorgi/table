@@ -70,8 +70,13 @@ export function useClientTableQuery<T>(
       }
       if (!search) return true;
       return columns.some((column) => {
+        // `searchValue` 先於 `filterValue`：一欄可以「搜得到摘要、但依類型
+        // 篩選」，那兩個值不一樣。
         const text =
-          column.filterValue?.(row) ?? column.sortValue?.(row) ?? null;
+          column.searchValue?.(row) ??
+          column.filterValue?.(row) ??
+          column.sortValue?.(row) ??
+          null;
         return text !== null && String(text).toLowerCase().includes(search);
       });
     };

@@ -384,3 +384,52 @@ describe("漸進揭露把每組的 key 帶出來", () => {
     expect(Object.values(byGroup).flat().length).toBe(ROWS.length);
   });
 });
+
+describe("searchValue：搜尋與篩選是兩件事", () => {
+  type Log = { id: string; summary: string; kind: string };
+  const data: Log[] = [
+    { id: "1", summary: "刪除了工作項目 A", kind: "workitem" },
+    { id: "2", summary: "登入", kind: "session" },
+    { id: "3", summary: "刪除了會議 B", kind: "meeting" },
+  ];
+  const columns: ConsoleTableColumn<Log>[] = [
+    {
+      id: "target",
+      header: "對象",
+      // 搜尋要搜得到摘要，篩選要按類型分——一個欄位兩種值
+      searchValue: (r) => r.summary,
+      filterValue: (r) => r.kind,
+      cell: (r) => r.summary,
+    },
+  ];
+  const key = (r: Log) => r.id;
+  const run = (cols: ConsoleTableColumn<Log>[], q: Partial<ReturnType<typeof createDefaultTableQuery>>) =>
+    renderHook(() =>
+      useClientTableQuery(data, { ...createDefaultTableQuery(10), ...q }, cols, key),
+    ).result.current;
+
+  it("搜尋比對 searchValue，不是 filterValue", () => {
+    expect(run(columns, { search: "刪除" }).rows.map(key)).toEqual(["1", "3"]);
+  });
+
+  it("篩選選單的選項仍然來自 filterValue", () => {
+    expect(run(columns, {}).filterOptions.target).toEqual([
+      "meeting",
+      "session",
+      "workitem",
+    ]);
+  });
+
+  it("篩選比對 filterValue，不受 searchValue 影響", () => {
+    expect(
+      run(columns, { filters: { target: ["meeting"] } }).rows.map(key),
+    ).toEqual(["3"]);
+  });
+
+  it("沒宣告 searchValue 時退回 filterValue", () => {
+    const plain: ConsoleTableColumn<Log>[] = [
+      { id: "kind", header: "類型", filterValue: (r) => r.kind, cell: (r) => r.kind },
+    ];
+    expect(run(plain, { search: "meeting" }).rows.map(key)).toEqual(["3"]);
+  });
+});

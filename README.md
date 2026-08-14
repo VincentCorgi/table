@@ -388,6 +388,7 @@ fetchPage({ query, cursor, signal }) → {
 | --- | --- |
 | `sortValue` | 可排序 |
 | `filterValue` | 可篩選、可分組 |
+| `searchValue` | 搜尋 | 只影響搜尋，**不會產生篩選選單**。沒給時退回 `filterValue` → `sortValue`。每一列都不一樣的欄位（摘要、名稱、IP）要的是這個 |
 | `copyValue` | 複製得出文字 |
 | `editable` | 可編輯 |
 | **`aggregateValue`** | **可加總** |
