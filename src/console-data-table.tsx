@@ -138,6 +138,10 @@ type ConsoleTableColumnBase<T> = {
    * 分組——那兩個值不一樣，硬用同一個就得二選一。
    *
    * 值仍然是一個字串，表格不解讀它。要塞幾個維度進去是使用端的事。
+   *
+   * 只宣告這個、不宣告 `filterValue` 也成立：那是一個「分得了組、但不出現在
+   * 篩選選單裡」的欄位。分組選單只列有 `filterValue` 的欄位，所以那種欄位是
+   * 給使用端自己設定 `query.groupBy` 用的。
    */
   groupValue?: (row: T) => string;
   /**
@@ -2086,7 +2090,9 @@ export function ConsoleDataTable<T>({
       // 指向已不存在的欄位就忽略，比照排序的處置
       if (
         prefs.groupBy === null ||
-        columns.some((c) => c.id === prefs.groupBy && c.filterValue)
+        columns.some(
+          (c) => c.id === prefs.groupBy && (c.filterValue || c.groupValue),
+        )
       ) {
         patch.groupBy = prefs.groupBy;
       }

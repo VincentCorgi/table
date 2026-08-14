@@ -148,7 +148,9 @@ export function useClientTableQuery<T>(
     // 只有一層；沒有 filterValue 的 id 視同未分組。手動模式照樣生效。
     const groupColumn = !query.groupBy
       ? null
-      : (columns.find((c) => c.id === query.groupBy && c.filterValue) ?? null);
+      : (columns.find(
+          (c) => c.id === query.groupBy && (c.filterValue || c.groupValue),
+        ) ?? null);
 
     // 照 AWS：資料永遠有排序。使用者沒指定時（query.sort 為 null）用第一個
     // 可排序欄升冪；排序選單只跟 query.sort 走，所以預設排序不會顯示出來。
