@@ -795,6 +795,9 @@ export function ConsoleDataTable<T>({
   onPreferencesChange,
   collapsedGroups: collapsedGroupsProp,
   onCollapsedGroupsChange,
+  selectedKeys: selectedKeysProp,
+  onSelectedKeysChange,
+  isRowSelectable,
   renderGroupLabel,
   storageKey,
 }: {
@@ -1089,6 +1092,21 @@ export function ConsoleDataTable<T>({
   collapsedGroups?: string[];
   onCollapsedGroupsChange?: (next: string[]) => void;
   /**
+   * 選取的列 key。給了 `onSelectedKeysChange` 就是受控。
+   *
+   * 選取常常不只是這張表的事：批次操作的按鈕可能在表格外面，或者換一個分頁
+   * 之後選取要留著。表格自己不知道那些，但也不該擋著。
+   */
+  selectedKeys?: string[];
+  onSelectedKeysChange?: (next: string[]) => void;
+  /**
+   * 這一列能不能被選。沒給就是每一列都能。
+   *
+   * 給合成列用的——使用端插進來當脈絡或當入口的那些列（借來顯示的父列、
+   * 「＋ 新增」列）不是資料，勾起來對任何批次操作都沒有意義。
+   */
+  isRowSelectable?: (row: T) => boolean;
+  /**
    * 群組標題上顯示什麼。預設是分組值本身（空值顯示「（未設定）」）。
    *
    * 逃生口，形狀比照 `renderGroupActions`：表格知道這一組是哪一組，不知道那
@@ -1102,7 +1120,27 @@ export function ConsoleDataTable<T>({
    */
   storageKey?: string;
 }) {
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  /**
+   * 選取的列。使用端給了 `onSelectedKeysChange` 就走受控——與 `query`、
+   * `preferences`、`collapsedGroups` 同一個安排。
+   *
+   * 需要受控是因為選取常常不只是這張表的事：批次操作的按鈕可能在表格外面，
+   * 或者換一個分頁之後選取要留著。表格自己不知道那些，但也不該擋著。
+   */
+  const [uncontrolledSelected, setUncontrolledSelected] = useState<Set<string>>(
+    new Set(),
+  );
+  const controlledSelection = !!onSelectedKeysChange;
+  const selectedKeys = controlledSelection
+    ? new Set(selectedKeysProp ?? [])
+    : uncontrolledSelected;
+  function setSelectedKeys(
+    update: Set<string> | ((prev: Set<string>) => Set<string>),
+  ) {
+    const next = typeof update === "function" ? update(selectedKeys) : update;
+    if (controlledSelection) onSelectedKeysChange!([...next]);
+    else setUncontrolledSelected(next);
+  }
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
   const [wrapLines, setWrapLines] = useState(false);
   /** 每欄選的統計。空物件＝都沒選，整條統計列不渲染。 */
@@ -2135,6 +2173,8 @@ export function ConsoleDataTable<T>({
    */
   const selectableRows = rows.filter((row, rowIndex) => {
     if (!isRowVisible(row)) return false;
+    // 使用端插進來的合成列不是資料，勾起來對任何批次操作都沒有意義
+    if (isRowSelectable && !isRowSelectable(row)) return false;
     if (grouping && groupValues) {
       const groupKey = groupValues[rowIndex] ?? "";
       return !isGroupCollapsed(groupKey) && !isGroupHidden(groupKey);
@@ -2793,7 +2833,11 @@ export function ConsoleDataTable<T>({
   // 外部狀態可能落在資料縮減後的失效頁，顯示上先 clamp
   const page = Math.min(query.pageIndex, pageCount - 1);
 
-  const rowKeys = rows.map(rowKey);
+  // 不能被選的列（使用端插進來的合成列）不算在「本頁全部」裡——否則永遠
+  // 湊不齊，表頭的勾選框就永遠是半選。
+  const rowKeys = rows
+    .filter((row) => !isRowSelectable || isRowSelectable(row))
+    .map(rowKey);
   const selectedOnPage = rowKeys.filter((key) => selectedKeys.has(key));
   const allOnPageSelected =
     rowKeys.length > 0 && selectedOnPage.length === rowKeys.length;
@@ -3567,11 +3611,13 @@ export function ConsoleDataTable<T>({
                             <GripVertical className="size-4" />
                           </span>
                         )}
-                        <Checkbox
-                          aria-label="選取此列"
-                          checked={selected}
-                          onCheckedChange={() => toggleRow(key)}
-                        />
+                        {(!isRowSelectable || isRowSelectable(row)) && (
+                          <Checkbox
+                            aria-label="選取此列"
+                            checked={selected}
+                            onCheckedChange={() => toggleRow(key)}
+                          />
+                        )}
                         {/* 三角形與拖曳握把現在會同時出現（分組／子項目下
                             也能拖），各佔一格互不擠掉。
                             有子項目＝三角形常駐；沒有子項目＝hover 才出現，

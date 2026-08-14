@@ -5697,3 +5697,58 @@ describe("群組標題的內容可以自訂", () => {
     expect(screen.getByRole("button", { name: "收合甲" })).toBeInTheDocument();
   });
 });
+
+describe("選取狀態可以交給使用端", () => {
+  const rowCheckboxes = () =>
+    screen.getAllByRole("checkbox", { name: "選取此列" });
+
+  it("受控時表格只回報，不自己選", async () => {
+    const user = userEvent.setup();
+    const onSelectedKeysChange = vi.fn();
+    renderTable({ selectedKeys: [], onSelectedKeysChange });
+
+    await user.click(rowCheckboxes()[0]);
+    expect(onSelectedKeysChange).toHaveBeenCalledTimes(1);
+    expect(onSelectedKeysChange.mock.calls[0][0]).toHaveLength(1);
+    // 使用端沒把值換回來，勾就不該打上去
+    expect(rowCheckboxes()[0]).not.toBeChecked();
+  });
+
+  it("使用端給的選取原樣顯示", () => {
+    renderTable({ selectedKeys: ["r2"], onSelectedKeysChange: vi.fn() });
+    const checked = rowCheckboxes().filter(
+      (c) => c.getAttribute("aria-checked") === "true" ||
+        (c as HTMLInputElement).checked === true,
+    );
+    expect(checked).toHaveLength(1);
+  });
+
+  it("沒給回報函式時維持自己管，行為不變", async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await user.click(rowCheckboxes()[0]);
+    expect(rowCheckboxes()[0]).toBeChecked();
+  });
+});
+
+describe("不是每一列都能被選", () => {
+  it("使用端說不能選的列沒有勾選框", () => {
+    renderTable({ isRowSelectable: (row) => row.id !== "r1" });
+    // 借來當脈絡的列、「＋ 新增」列不是資料，勾起來對批次操作沒有意義
+    expect(screen.getAllByRole("checkbox", { name: "選取此列" })).toHaveLength(
+      9,
+    );
+  });
+
+  it("全選不會把不能選的列算進去", async () => {
+    const user = userEvent.setup();
+    const onSelectedKeysChange = vi.fn();
+    renderTable({
+      isRowSelectable: (row) => row.id !== "r1",
+      selectedKeys: [],
+      onSelectedKeysChange,
+    });
+    await user.click(screen.getByRole("checkbox", { name: "選取本頁全部" }));
+    expect(onSelectedKeysChange.mock.calls[0][0]).not.toContain("r1");
+  });
+});
