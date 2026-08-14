@@ -1,0 +1,51 @@
+{
+  "name": "@lyztw-tech/console-data-table",
+  "version": "0.1.0",
+  "description": "AWS Console 風格的受控資料表格：排序、篩選、分組、子項目、儲存格範圍編輯與剪貼簿。不認識任何 UI primitive 函式庫，由使用端實作 table-ui 契約。",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "PORTING.md"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:layout": "vitest run --config vitest.browser.config.mts",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "clsx": "^2",
+    "lucide-react": "*",
+    "react": "^19",
+    "tailwind-merge": "^3"
+  },
+  "devDependencies": {
+    "@base-ui/react": "^1.7.0",
+    "@radix-ui/react-slot": "^1.3.3",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.4",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitest/browser": "^4.1.10",
+    "@vitest/browser-playwright": "^4.1.10",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "jsdom": "^30.0.1",
+    "lucide-react": "^1.31.0",
+    "playwright": "^1.62.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10"
+  }
+}
