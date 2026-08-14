@@ -145,6 +145,17 @@ type ConsoleTableColumnBase<T> = {
    */
   groupValue?: (row: T) => string;
   /**
+   * 這一欄是不是這一列的**身分**——看到它就知道這是哪一列的那一欄。
+   *
+   * 「開啟」浮在它的右緣。沒有任何欄位宣告時退回第一個看得見的欄位，那是一個
+   * 猜測：多數表格的第一欄確實是名稱，但釘選的星號、勾選框、編號欄也常常排在
+   * 前面，那時「開啟」就會浮在一個 36px 寬的格子裡。
+   *
+   * 表格自己判斷不出來——欄寬、標題、有沒有 `editable` 都不能說明「哪一欄是這
+   * 一列的名字」。只有使用端知道。
+   */
+  identity?: boolean;
+  /**
    * 這一欄在群組結尾自己畫什麼。**有給就用它，內建的 COUNT／SUM 讓位**——
    * 「這一組還剩幾天」「已用 / 預估」這些結論加不出來，它們是使用端算的。
    *
@@ -3742,8 +3753,15 @@ export function ConsoleDataTable<T>({
                       const isActive = isActiveCell(key, column.id);
                       // 只掛第一個可見欄位：那是 Notion 的標題屬性所在，也是
                       // 這張表「這一列是什麼」的那一欄。捲動版限定。
+                      // 有欄位自己說是身分欄就用它；沒有才退回第一欄。
+                      const identityIndex = Math.max(
+                        0,
+                        visibleColumns.findIndex((c) => c.identity),
+                      );
                       const showsOpenRow =
-                        !!onOpenRow && scrollMode && columnIndex === 0;
+                        !!onOpenRow &&
+                        scrollMode &&
+                        columnIndex === identityIndex;
 
                       return (
                         <TableCell

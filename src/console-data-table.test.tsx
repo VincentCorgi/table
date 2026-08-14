@@ -5752,3 +5752,28 @@ describe("不是每一列都能被選", () => {
     expect(onSelectedKeysChange.mock.calls[0][0]).not.toContain("r1");
   });
 });
+
+describe("「開啟」浮在身分欄上", () => {
+  const openRowIn = (columnId: string) => {
+    const btn = document.querySelector("[data-open-row]");
+    return btn?.closest("td")?.getAttribute("data-column-id") === columnId;
+  };
+
+  it("沒有欄位宣告時退回第一欄", () => {
+    renderTable({ pagination: "scroll", onOpenRow: vi.fn() });
+    expect(openRowIn("name")).toBe(true);
+  });
+
+  it("宣告了就跟著身分欄走，不管它排第幾", () => {
+    // 釘選的星號、勾選框、編號欄都常常排在名稱前面，那時第一欄只有 36px
+    renderTable({
+      pagination: "scroll",
+      onOpenRow: vi.fn(),
+      columns: COLUMNS.map((c) =>
+        c.id === "group" ? { ...c, identity: true } : c,
+      ),
+    });
+    expect(openRowIn("group")).toBe(true);
+    expect(openRowIn("name")).toBe(false);
+  });
+});
