@@ -390,6 +390,7 @@ fetchPage({ query, cursor, signal }) → {
 | `filterValue` | 可篩選、可分組 |
 | `searchValue` | 搜尋 | 只影響搜尋，**不會產生篩選選單**。沒給時退回 `filterValue` → `sortValue`。每一列都不一樣的欄位（摘要、名稱、IP）要的是這個 |
 | `dateFilterValue` | 日期區間篩選 | 給 `YYYY-MM-DD`。控制項是相對區間（逾期／今天／本週／本月／未來）＋自訂起訖，**不是**一份每天一個選項的清單。相對區間存成 `bucket:<id>`，每次讀取重新對時鐘解析——存下來的「今天」隔天仍然是那天的今天 |
+| `filterValues` | 多值篩選 | 一列同時屬於多個值時用（參與者、標籤）。選了幾個就是「至少符合其中一個」。**不能拿來分組**——一列屬於多個組的話，各組筆數加起來會超過總筆數 |
 | `copyValue` | 複製得出文字 |
 | `editable` | 可編輯 |
 | **`aggregateValue`** | **可加總** |

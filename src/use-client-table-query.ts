@@ -50,9 +50,12 @@ export function useClientTableQuery<T>(
   const filterOptions = useMemo(() => {
     const options: Record<string, string[]> = {};
     for (const column of columns) {
-      if (!column.filterValue) continue;
+      if (!column.filterValue && !column.filterValues) continue;
       const values = new Set<string>();
-      for (const row of data) values.add(filterTextOf(column, row));
+      for (const row of data) {
+        if (column.filterValues) for (const v of column.filterValues(row)) values.add(v);
+        else values.add(filterTextOf(column, row));
+      }
       options[column.id] = [...values].sort((a, b) =>
         a.localeCompare(b, "zh-Hant"),
       );
@@ -74,6 +77,13 @@ export function useClientTableQuery<T>(
           if (range && !dateInRange(column.dateFilterValue(row), range)) {
             return false;
           }
+          continue;
+        }
+        if (column.filterValues) {
+          // 選了幾個就是「至少符合其中一個」——一列屬於多個值時，要求全中
+          // 會讓大部分的組合永遠是空的
+          const own = column.filterValues(row);
+          if (!values.some((v) => own.includes(v))) return false;
           continue;
         }
         if (!column.filterValue) continue;

@@ -483,3 +483,47 @@ describe("dateFilterValue：篩的是區間，不是一顆一顆的日期", () =
     expect(run({}).filterOptions.due).toBeUndefined();
   });
 });
+
+describe("filterValues：一列同時屬於多個值", () => {
+  type Mtg = { id: string; people: string[] };
+  const data: Mtg[] = [
+    { id: "a", people: ["甲", "乙"] },
+    { id: "b", people: ["乙", "丙"] },
+    { id: "c", people: [] },
+  ];
+  const columns: ConsoleTableColumn<Mtg>[] = [
+    {
+      id: "people",
+      header: "參與者",
+      filterValues: (m) => m.people,
+      cell: (m) => m.people.join("、"),
+    },
+  ];
+  const key = (m: Mtg) => m.id;
+  const run = (filters: Record<string, string[]>) =>
+    renderHook(() =>
+      useClientTableQuery(
+        data,
+        { ...createDefaultTableQuery(10), sort: "manual", filters },
+        columns,
+        key,
+      ),
+    ).result.current;
+
+  it("選項是所有列出現過的值的聯集", () => {
+    expect(run({}).filterOptions.people).toEqual(["乙", "丙", "甲"]);
+  });
+
+  it("選一個值就撈出所有含有它的列", () => {
+    // 用 filterValue 只能挑一個代表，乙 在 b 不是第一順位就會漏掉
+    expect(run({ people: ["乙"] }).rows.map(key)).toEqual(["a", "b"]);
+  });
+
+  it("選多個是「至少符合其中一個」，不是全中", () => {
+    expect(run({ people: ["甲", "丙"] }).rows.map(key)).toEqual(["a", "b"]);
+  });
+
+  it("一個值都沒有的列不會被撈到", () => {
+    expect(run({ people: ["甲"] }).rows.map(key)).not.toContain("c");
+  });
+});
