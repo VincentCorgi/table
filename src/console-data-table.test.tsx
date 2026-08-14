@@ -5275,3 +5275,51 @@ describe("窄欄裡的標籤縮成省略號，不是被切斷", () => {
     expect(editCell(0, 3)).not.toHaveAttribute("title");
   });
 });
+
+describe("疏密與撐滿高度", () => {
+  const headCell = () =>
+    document.querySelector('thead th[data-column-id="name"]') as HTMLElement;
+  const bodyCell = () =>
+    document.querySelector('tbody td[data-column-id="name"]') as HTMLElement;
+  const container = () =>
+    document.querySelector('[data-slot="table-container"]') as HTMLElement;
+
+  it("預設不加任何疏密的 class", () => {
+    renderTable();
+    expect(bodyCell().className).not.toContain("py-1");
+    expect(headCell().className).not.toContain("h-8");
+  });
+
+  it("compact 只縮直向內距，不動字級", () => {
+    renderTable({ density: "compact" });
+    expect(bodyCell().className).toContain("py-1");
+    expect(headCell().className).toContain("h-8");
+    // 字級不變——縮字會讓一張本來就密的表更難讀
+    expect(bodyCell().className).not.toContain("text-xs");
+  });
+
+  it("fillHeight 把高度交給 flex，捲動落在容器那一層", () => {
+    renderTable({ fillHeight: true });
+    // 高度必須在捲動容器上：sticky 表頭是對最近的捲動祖先定位的
+    expect(container().className).toContain("overflow-auto");
+    expect(container().className).toContain("flex-1");
+    expect(container().className).toContain("min-h-0");
+  });
+
+  it("沒開 fillHeight 時維持固定的高度上限", () => {
+    renderTable();
+    expect(container().className).not.toContain("flex-1");
+  });
+
+  it("標題吃得下 ReactNode，不只是字串", () => {
+    renderTable({
+      title: (
+        <span>
+          <span data-testid="title-icon">◆</span> 缺失
+        </span>
+      ),
+    });
+    expect(screen.getByTestId("title-icon")).toBeInTheDocument();
+    expect(screen.getByRole("heading")).toHaveTextContent("缺失");
+  });
+});

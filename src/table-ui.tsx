@@ -129,7 +129,16 @@ export type TableUIComponents = {
     }
   >;
 
-  Table: React.ComponentType<Cls & React.ComponentProps<"table">>;
+  /**
+   * `containerClassName` 落在**捲動容器**上，不是 `<table>` 上。
+   *
+   * sticky 表頭是對「最近的捲動祖先」定位的，所以高度上限與 overflow 必須設
+   * 在容器那一層；設在外面一層，表頭會錨在一個從不垂直捲動的元素上，跟著內容
+   * 捲走。實作端要把它套到容器，不能只是併進 `<table>` 的 className。
+   */
+  Table: React.ComponentType<
+    Cls & React.ComponentProps<"table"> & { containerClassName?: string }
+  >;
   TableHeader: React.ComponentType<Cls & React.ComponentProps<"thead">>;
   TableBody: React.ComponentType<
     Cls & Omit<React.ComponentProps<"tbody">, "ref"> & { ref?: React.Ref<HTMLTableSectionElement> }

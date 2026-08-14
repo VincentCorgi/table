@@ -693,6 +693,8 @@ function resolveColumnOrder<T>(
  */
 export function ConsoleDataTable<T>({
   title,
+  density = "regular",
+  fillHeight = false,
   columns,
   rows,
   totalCount,
@@ -735,7 +737,26 @@ export function ConsoleDataTable<T>({
   onPreferencesChange,
   storageKey,
 }: {
-  title: string;
+  /**
+   * 標題。收 ReactNode 而不只是字串——使用端常要在標題旁放一個圖示，那不值得
+   * 為它多開一個 slot；標題本來就是「工具列最前面那塊」。
+   */
+  title: React.ReactNode;
+  /**
+   * 列的疏密。`compact` 只縮直向內距，不動字級與命中區——縮字會讓一張本來就
+   * 密的表更難讀，而縮命中區會讓它更難點。
+   */
+  density?: "regular" | "compact";
+  /**
+   * 讓表格撐滿 flex 父層，捲動發生在表格內部而不是整頁。
+   *
+   * 高度落在捲動容器那一層（見 `TableUIComponents.Table` 的
+   * `containerClassName`）——設在外面一層，sticky 表頭會錨在一個從不垂直捲動
+   * 的元素上，跟著內容一起捲走。
+   *
+   * 同一個畫面上下疊兩張表時不要開：兩張都想撐滿，結果是兩張都很矮。
+   */
+  fillHeight?: boolean;
   columns: ConsoleTableColumn<T>[];
   /** 當前頁的列（已排序、篩選、切頁完畢）。 */
   rows: T[];
@@ -2872,13 +2893,26 @@ export function ConsoleDataTable<T>({
     ? visibleColumns.find((c) => c.id === editing.columnId)?.editable
     : undefined;
 
+  /** 疏密只縮直向內距——縮字級會讓密的表更難讀，縮命中區會更難點。 */
+  const densityCellClass = density === "compact" ? "py-1" : undefined;
+  const densityHeadClass = density === "compact" ? "h-8 py-0" : undefined;
+
   const cellWrapClass = wrapLines
     ? "whitespace-normal break-words"
     : // table-fixed 下不換行的內容要能截斷，照 AWS 顯示省略號
       "overflow-hidden text-ellipsis";
 
+  const compact = density === "compact";
+
   return (
-    <div className="flex flex-col gap-3">
+    <div
+      className={cn(
+        "flex flex-col gap-3",
+        // 撐滿父層時 min-h-0 是必要的：flex 子元素的預設最小高度是內容高度，
+        // 少了它捲動容器永遠不會比內容矮，於是整頁捲而不是表格內捲。
+        fillHeight && "min-h-0 flex-1",
+      )}
+    >
       {/* Toolbar row 1: title + count, refresh, selection-aware actions */}
       <div
         className="flex flex-wrap items-center justify-between gap-2"
@@ -3167,7 +3201,13 @@ export function ConsoleDataTable<T>({
           方向鍵。 */}
       <div
         ref={keyboardHostRef}
-        className="[&>[data-slot=table-container]]:max-h-[32rem] [&>[data-slot=table-container]]:overflow-auto focus:outline-none"
+        className={cn(
+          "focus:outline-none",
+          fillHeight
+            ? // 撐滿時高度交給 flex，容器自己捲（見 containerClassName）
+              "flex min-h-0 flex-1 flex-col"
+            : "[&>[data-slot=table-container]]:max-h-[32rem] [&>[data-slot=table-container]]:overflow-auto",
+        )}
         aria-busy={loading}
         tabIndex={cellSelectable ? 0 : undefined}
         onKeyDown={handleTableKeyDown}
@@ -3176,6 +3216,9 @@ export function ConsoleDataTable<T>({
         onPaste={handleTablePaste}
       >
         <Table
+          containerClassName={
+            fillHeight ? "min-h-0 flex-1 overflow-auto" : undefined
+          }
           className={cn(hasCustomWidths && "table-fixed")}
           // minWidth 100% 是照 AWS 的地板：欄寬總和小於容器時表格仍撐滿、
           // 多的空間攤回欄位，不會在右側露出空白。
@@ -3213,6 +3256,7 @@ export function ConsoleDataTable<T>({
                 className={cn(
                   "bg-background sticky top-0 z-10",
                   leadingCellWidth,
+                  densityHeadClass,
                 )}
               >
                 <Checkbox
@@ -3230,6 +3274,7 @@ export function ConsoleDataTable<T>({
                     key={column.id}
                     data-column-id={column.id}
                     className={cn(
+                      densityHeadClass,
                       // 表頭一律靠左，不跟著儲存格的對齊走：欄名是標籤不是
                       // 資料，整排表頭起點對齊比較容易掃讀；數值欄的儲存格
                       // 仍靠右（見 columnAlign）。
@@ -3531,6 +3576,7 @@ export function ConsoleDataTable<T>({
                           className={cn(
                             ALIGN_CLASS[columnAlign(column)],
                             cellWrapClass,
+                            densityCellClass,
                             // 捲動版畫欄與欄之間的直線，讓每一欄讀起來是
                             // 一格（Notion 表格檢視的樣子）。橫線與外框
                             // 仍然不畫——那是「框框感」的來源。

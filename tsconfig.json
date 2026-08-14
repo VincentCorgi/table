@@ -13,5 +13,5 @@
     "verbatimModuleSyntax": true,
     "types": ["vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src", "*.mts", "*.ts"]
+  "include": ["src", "*.mts", "*.ts", "src/css.d.ts"]
 }
