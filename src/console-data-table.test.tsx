@@ -5777,3 +5777,22 @@ describe("「開啟」浮在身分欄上", () => {
     expect(openRowIn("name")).toBe(false);
   });
 });
+
+describe("沒有批次操作的表格不掛勾選框", () => {
+  it("關掉之後每一列與表頭都沒有勾選框", () => {
+    renderTable({ enableSelection: false });
+    expect(
+      screen.queryByRole("checkbox", { name: "選取此列" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: "選取本頁全部" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("預設仍然有——多數表格是有批次操作的", () => {
+    renderTable();
+    expect(
+      screen.getAllByRole("checkbox", { name: "選取此列" }).length,
+    ).toBeGreaterThan(0);
+  });
+});

@@ -823,6 +823,7 @@ export function ConsoleDataTable<T>({
   selectedKeys: selectedKeysProp,
   onSelectedKeysChange,
   isRowSelectable,
+  enableSelection = true,
   renderGroupLabel,
   storageKey,
 }: {
@@ -1131,6 +1132,13 @@ export function ConsoleDataTable<T>({
    * 「＋ 新增」列）不是資料，勾起來對任何批次操作都沒有意義。
    */
   isRowSelectable?: (row: T) => boolean;
+  /**
+   * 有沒有選取。關掉的時候連勾選框那一欄都不畫。
+   *
+   * 沒有批次操作的表格不該掛一排勾選框——它們勾得起來、也確實記著，但沒有任
+   * 何按鈕會用到那份選取，於是那一欄只是在佔位置並且暗示一件做不到的事。
+   */
+  enableSelection?: boolean;
   /**
    * 群組標題上顯示什麼。預設是分組值本身（空值顯示「（未設定）」）。
    *
@@ -3478,12 +3486,16 @@ export function ConsoleDataTable<T>({
                   densityHeadClass,
                 )}
               >
-                <Checkbox
-                  aria-label="選取本頁全部"
-                  checked={allOnPageSelected}
-                  indeterminate={!allOnPageSelected && selectedOnPage.length > 0}
-                  onCheckedChange={toggleAllOnPage}
-                />
+                {enableSelection && (
+                  <Checkbox
+                    aria-label="選取本頁全部"
+                    checked={allOnPageSelected}
+                    indeterminate={
+                      !allOnPageSelected && selectedOnPage.length > 0
+                    }
+                    onCheckedChange={toggleAllOnPage}
+                  />
+                )}
               </TableHead>
               {visibleColumns.map((column) => {
                 const active =
@@ -3638,13 +3650,14 @@ export function ConsoleDataTable<T>({
                             <GripVertical className="size-4" />
                           </span>
                         )}
-                        {(!isRowSelectable || isRowSelectable(row)) && (
-                          <Checkbox
-                            aria-label="選取此列"
-                            checked={selected}
-                            onCheckedChange={() => toggleRow(key)}
-                          />
-                        )}
+                        {enableSelection &&
+                          (!isRowSelectable || isRowSelectable(row)) && (
+                            <Checkbox
+                              aria-label="選取此列"
+                              checked={selected}
+                              onCheckedChange={() => toggleRow(key)}
+                            />
+                          )}
                         {/* 三角形與拖曳握把現在會同時出現（分組／子項目下
                             也能拖），各佔一格互不擠掉。
                             有子項目＝三角形常駐；沒有子項目＝hover 才出現，
