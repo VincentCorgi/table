@@ -18,6 +18,20 @@ function filterTextOf<T>(
   return column.filterValue?.(row) ?? "";
 }
 
+/**
+ * 分組值。宣告了 `groupValue` 就走它——篩選、搜尋、分組是三件事，只是大部分
+ * 時候用同一個值。
+ */
+function groupTextOf<T>(
+  column: {
+    filterValue?: (row: T) => string;
+    groupValue?: (row: T) => string;
+  },
+  row: T,
+): string {
+  return column.groupValue?.(row) ?? filterTextOf(column, row);
+}
+
 function compareValues(
   a: string | number | null,
   b: string | number | null,
@@ -210,8 +224,8 @@ export function useClientTableQuery<T>(
             columnSort?.columnId === groupColumn.id
               ? columnSort.direction
               : "asc";
-          const aValue = filterTextOf(groupColumn, aTop);
-          const bValue = filterTextOf(groupColumn, bTop);
+          const aValue = groupTextOf(groupColumn, aTop);
+          const bValue = groupTextOf(groupColumn, bTop);
           const aEmpty = aValue === "";
           const bEmpty = bValue === "";
           if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
@@ -269,7 +283,7 @@ export function useClientTableQuery<T>(
 
     // 分組值取自父列，子列因此永遠與父列同組
     const valueOf = (row: T) =>
-      groupColumn ? filterTextOf(groupColumn, topAncestorOf(row)) : null;
+      groupColumn ? groupTextOf(groupColumn, topAncestorOf(row)) : null;
 
     // 每組筆數（篩選後全資料，非當前批次）；key 就是分組值本身
     let groupCounts: Record<string, number> | undefined;

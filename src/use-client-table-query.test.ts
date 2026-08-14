@@ -527,3 +527,66 @@ describe("filterValues：一列同時屬於多個值", () => {
     expect(run({ people: ["甲"] }).rows.map(key)).not.toContain("c");
   });
 });
+
+describe("groupValue：分組的值可以跟篩選的值不一樣", () => {
+  type Task = { id: string; project: string; schedule: string };
+  const data: Task[] = [
+    { id: "a", project: "P1", schedule: "S1" },
+    { id: "b", project: "P2", schedule: "S1" },
+    { id: "c", project: "P1", schedule: "S2" },
+  ];
+  const columns: ConsoleTableColumn<Task>[] = [
+    {
+      id: "schedule",
+      header: "排程",
+      // 照排程名稱篩選，卻連同專案一起分組——那兩個值不一樣
+      filterValue: (t) => t.schedule,
+      groupValue: (t) => `${t.project}/${t.schedule}`,
+      cell: (t) => t.schedule,
+    },
+  ];
+  const key = (t: Task) => t.id;
+  const run = (q: Partial<ReturnType<typeof createDefaultTableQuery>>) =>
+    renderHook(() =>
+      useClientTableQuery(
+        data,
+        { ...createDefaultTableQuery(10), sort: "manual", ...q },
+        columns,
+        key,
+      ),
+    ).result.current;
+
+  it("分組用 groupValue", () => {
+    expect(run({ groupBy: "schedule" }).groupValues).toEqual([
+      "P1/S1",
+      "P1/S2",
+      "P2/S1",
+    ]);
+  });
+
+  it("篩選選單仍然是 filterValue，沒有被合成值汙染", () => {
+    expect(run({}).filterOptions.schedule).toEqual(["S1", "S2"]);
+  });
+
+  it("篩選比對的也還是 filterValue", () => {
+    expect(run({ filters: { schedule: ["S1"] } }).rows.map(key)).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  it("沒宣告 groupValue 時分組就是 filterValue", () => {
+    const plain: ConsoleTableColumn<Task>[] = [
+      { id: "p", header: "專案", filterValue: (t) => t.project, cell: (t) => t.project },
+    ];
+    const result = renderHook(() =>
+      useClientTableQuery(
+        data,
+        { ...createDefaultTableQuery(10), sort: "manual", groupBy: "p" },
+        plain,
+        key,
+      ),
+    ).result.current;
+    expect(result.groupValues).toEqual(["P1", "P1", "P2"]);
+  });
+});
