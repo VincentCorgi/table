@@ -5596,3 +5596,104 @@ describe("落點驗證", () => {
     );
   });
 });
+
+describe("收合狀態可以交給使用端", () => {
+  async function groupBy(
+    user: ReturnType<typeof userEvent.setup>,
+    label: string,
+  ) {
+    await user.click(screen.getByRole("button", { name: "分組" }));
+    const menu = document.querySelector(
+      '[data-slot="popover-content"]',
+    ) as HTMLElement;
+    await user.click(within(menu).getByRole("button", { name: label }));
+    await user.keyboard("{Escape}");
+  }
+
+  const headings = () =>
+    [...document.querySelectorAll('[data-slot="group-header"]')] as HTMLElement[];
+  const bodyRowCount = () =>
+    document.querySelectorAll("tr[data-row-key]").length;
+
+  it("受控時表格只回報，不自己收合", async () => {
+    const user = userEvent.setup();
+    const onCollapsedGroupsChange = vi.fn();
+    renderTable({
+      pagination: "scroll",
+      initialPageSize: 30,
+      collapsedGroups: [],
+      onCollapsedGroupsChange,
+    });
+    await groupBy(user, "類別");
+    const before = bodyRowCount();
+
+    await user.click(
+      headings()[0].querySelector("[data-group-disclosure]") as HTMLElement,
+    );
+    expect(onCollapsedGroupsChange).toHaveBeenCalledTimes(1);
+    expect(onCollapsedGroupsChange.mock.calls[0][0]).toHaveLength(1);
+    // 使用端沒把值換回來，畫面就不該自己變——兩個主人的下場是誰後到誰贏
+    expect(bodyRowCount()).toBe(before);
+  });
+
+  it("使用端一次收掉好幾組也成立", async () => {
+    const user = userEvent.setup();
+    renderTable({
+      pagination: "scroll",
+      initialPageSize: 30,
+      collapsedGroups: ["甲", "乙"],
+      onCollapsedGroupsChange: vi.fn(),
+    });
+    await groupBy(user, "類別");
+    // 只剩丙那一組的列
+    expect(bodyRowCount()).toBe(4);
+  });
+
+  it("沒給回報函式時維持自己管，行為不變", async () => {
+    const user = userEvent.setup();
+    renderTable({ pagination: "scroll", initialPageSize: 30 });
+    await groupBy(user, "類別");
+    const before = bodyRowCount();
+    await user.click(
+      headings()[0].querySelector("[data-group-disclosure]") as HTMLElement,
+    );
+    expect(bodyRowCount()).toBeLessThan(before);
+  });
+});
+
+describe("群組標題的內容可以自訂", () => {
+  async function groupBy(
+    user: ReturnType<typeof userEvent.setup>,
+    label: string,
+  ) {
+    await user.click(screen.getByRole("button", { name: "分組" }));
+    const menu = document.querySelector(
+      '[data-slot="popover-content"]',
+    ) as HTMLElement;
+    await user.click(within(menu).getByRole("button", { name: label }));
+    await user.keyboard("{Escape}");
+  }
+
+  it("使用端畫的內容取代預設的分組值", async () => {
+    const user = userEvent.setup();
+    renderTable({
+      pagination: "scroll",
+      initialPageSize: 30,
+      renderGroupLabel: (value) => <span data-testid="custom">類別 {value}</span>,
+    });
+    await groupBy(user, "類別");
+    expect(screen.getAllByTestId("custom").length).toBeGreaterThan(0);
+  });
+
+  it("無障礙名稱仍然用原始字串，不跟著任意的 JSX 走", async () => {
+    const user = userEvent.setup();
+    renderTable({
+      pagination: "scroll",
+      initialPageSize: 30,
+      renderGroupLabel: () => <span>◆</span>,
+    });
+    await groupBy(user, "類別");
+    // 收合鈕要能被叫得出名字，而名字要穩定、可預期
+    expect(screen.getByRole("button", { name: "收合甲" })).toBeInTheDocument();
+  });
+});

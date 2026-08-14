@@ -793,6 +793,9 @@ export function ConsoleDataTable<T>({
   emptyMessage = "沒有資料",
   preferences,
   onPreferencesChange,
+  collapsedGroups: collapsedGroupsProp,
+  onCollapsedGroupsChange,
+  renderGroupLabel,
   storageKey,
 }: {
   /**
@@ -1076,6 +1079,23 @@ export function ConsoleDataTable<T>({
    * 兩個主人，那正是 sort／pageSize 過去的毛病。
    */
   onPreferencesChange?: (next: ConsoleTablePreferences) => void;
+  /**
+   * 收合的群組值。給了 `onCollapsedGroupsChange` 就是受控——表格只回報，
+   * 收合什麼由使用端決定。
+   *
+   * 存在的理由是「收合什麼」有時候不是一組一組的事：使用端可能想讓一次點擊
+   * 收掉好幾組。表格自己不做那種判斷，但也不該擋著。
+   */
+  collapsedGroups?: string[];
+  onCollapsedGroupsChange?: (next: string[]) => void;
+  /**
+   * 群組標題上顯示什麼。預設是分組值本身（空值顯示「（未設定）」）。
+   *
+   * 逃生口，形狀比照 `renderGroupActions`：表格知道這一組是哪一組，不知道那
+   * 個值對使用端**讀起來**是什麼。無障礙的名稱仍然用原始字串——它要穩定、
+   * 要可預期，不能跟著一段任意的 JSX 走。
+   */
+  renderGroupLabel?: (groupValue: string | null) => React.ReactNode;
   /**
    * 提供時，欄寬與偏好設定會以此 key 存進 localStorage，重整後保留。
    * **只在沒給 `onPreferencesChange` 時作為後備。**
@@ -1480,9 +1500,26 @@ export function ConsoleDataTable<T>({
    * 欄位值、子項目的鍵是 rowKey，兩者可能撞名，共用一張表時一個收合會誤動
    * 另一個。加前綴只是隱形約定，仍可能撞。
    */
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    new Set(),
-  );
+  /**
+   * 收合的群組。使用端給了 `collapsedGroups` 就走受控——與 `query` 和
+   * `preferences` 同一個安排：狀態的主人是誰要說得清楚，兩個主人的下場就是
+   * 誰後到誰贏。
+   */
+  const [uncontrolledCollapsed, setUncontrolledCollapsed] = useState<
+    Set<string>
+  >(new Set());
+  const controlledCollapse = !!onCollapsedGroupsChange;
+  const collapsedGroups = controlledCollapse
+    ? new Set(collapsedGroupsProp ?? [])
+    : uncontrolledCollapsed;
+  function setCollapsedGroups(
+    update: Set<string> | ((prev: Set<string>) => Set<string>),
+  ) {
+    const next =
+      typeof update === "function" ? update(collapsedGroups) : update;
+    if (controlledCollapse) onCollapsedGroupsChange!([...next]);
+    else setUncontrolledCollapsed(next);
+  }
 
   function isGroupCollapsed(groupKey: string): boolean {
     return collapsedGroups.has(groupKey);
@@ -3836,6 +3873,7 @@ export function ConsoleDataTable<T>({
                   <GroupSectionHeading
                     key={`group-${groupKey}`}
                     label={value === "" || value === null ? "（未設定）" : value}
+                    labelNode={renderGroupLabel?.(value)}
                     count={groupCounts?.[groupKey]}
                     collapsed={collapsed}
                     columnCount={columnCount}
@@ -4224,6 +4262,7 @@ function GroupMenuButton({
 
 function GroupSectionHeading({
   label,
+  labelNode,
   count,
   collapsed,
   columnCount,
@@ -4234,6 +4273,8 @@ function GroupSectionHeading({
   menu,
 }: {
   label: string;
+  /** 使用端自訂的標題內容。無障礙名稱仍然用 `label`。 */
+  labelNode?: React.ReactNode;
   count: number | undefined;
   collapsed: boolean;
   columnCount: number;
@@ -4282,7 +4323,7 @@ function GroupSectionHeading({
           >
             <path d="M9 5.5 17 12l-8 6.5z" />
           </svg>
-          {label}
+          {labelNode ?? label}
           {count !== undefined && (
             <span className="text-muted-foreground font-normal tabular-nums">
               （{count}）
