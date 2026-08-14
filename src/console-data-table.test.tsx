@@ -5420,3 +5420,29 @@ describe("日期區間篩選", () => {
     expect(screen.queryByText(/逾期/)).not.toBeInTheDocument();
   });
 });
+
+describe("整列的狀態性強調", () => {
+  const bodyRows = () =>
+    within(document.querySelector("tbody")!).getAllByRole("row");
+
+  it("使用端給的 class 落在列上", () => {
+    renderTable({
+      rowClassName: (row) => (row.id === "r1" ? "line-through" : undefined),
+    });
+    const marked = bodyRows().filter((r) =>
+      r.className.includes("line-through"),
+    );
+    expect(marked).toHaveLength(1);
+  });
+
+  it("只給樣式，不給行為——排序不看它", () => {
+    renderTable({ rowClassName: () => "opacity-65" });
+    // 整列淡出不代表它排到後面去
+    expect(firstRowName()).toBe("n01");
+  });
+
+  it("沒給就什麼都不加", () => {
+    renderTable();
+    expect(bodyRows()[0].className).not.toContain("undefined");
+  });
+});

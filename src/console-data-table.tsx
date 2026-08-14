@@ -771,6 +771,7 @@ export function ConsoleDataTable<T>({
   onAddSubRow,
   onOpenRow,
   retainedParentKeys,
+  rowClassName,
   loading = false,
   onRefresh,
   pagination = "paged",
@@ -1006,6 +1007,14 @@ export function ConsoleDataTable<T>({
    */
   retainedParentKeys?: string[];
   /** true 時表格內容顯示 skeleton；與空資料是兩回事。 */
+  /**
+   * 整列的狀態性強調（已取消畫刪除線、已過去淡出）。**只給樣式，不給行
+   * 為**——排序、篩選、選取都不看它。
+   *
+   * 這件事表格做不到：它不知道一列「已經過去了」是什麼意思。逐格處理則是
+   * 把同一個判斷抄進每一欄，那才是真正會走樣的做法。
+   */
+  rowClassName?: (row: T) => string | undefined;
   loading?: boolean;
   /** 提供時顯示重新整理鈕，載入中會停用並旋轉 icon。 */
   onRefresh?: () => void;
@@ -3446,6 +3455,9 @@ export function ConsoleDataTable<T>({
                         visibleIndexByKey.get(key) ===
                           selectableRows.length - 1 &&
                         "border-b-primary border-b-2",
+                      // 使用端最後套用：狀態性的整列強調（已取消、已過期）
+                      // 是這一列的意思，表格不知道那是什麼
+                      rowClassName?.(row),
                     )}
                   >
                     <TableCell
