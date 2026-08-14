@@ -3,6 +3,7 @@ import type {
   ConsoleTableColumn,
   TableQuery,
 } from "./console-data-table";
+import { dateInRange, resolveDateFilter } from "./date-buckets";
 
 /**
  * 欄位的篩選值。型別上是 `string`，但實際資料是可空的——範圍清空會把
@@ -65,7 +66,17 @@ export function useClientTableQuery<T>(
       for (const [columnId, values] of Object.entries(query.filters)) {
         if (values.length === 0) continue;
         const column = columns.find((c) => c.id === columnId);
-        if (!column?.filterValue) continue;
+        if (!column) continue;
+        if (column.dateFilterValue) {
+          // 相對區間每次都對當下的時鐘重新解析——存下來的「今天」隔天仍然
+          // 是那天的今天，而不是它被挑中的那一天。
+          const range = resolveDateFilter(values[0]);
+          if (range && !dateInRange(column.dateFilterValue(row), range)) {
+            return false;
+          }
+          continue;
+        }
+        if (!column.filterValue) continue;
         if (!values.includes(filterTextOf(column, row))) return false;
       }
       if (!search) return true;

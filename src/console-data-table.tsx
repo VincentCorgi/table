@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Check,
   ChevronLeft,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -28,6 +29,11 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "./cn";
+import {
+  DATE_BUCKETS,
+  customRangeValue,
+  dateFilterLabel,
+} from "./date-buckets";
 import { Button } from "./table-ui";
 import { Checkbox } from "./table-ui";
 import { Input } from "./table-ui";
@@ -99,6 +105,19 @@ type ConsoleTableColumnBase<T> = {
    * 一欄都沒宣告過這三者的表格，搜尋框比對不到任何東西。
    */
   searchValue?: (row: T) => string;
+  /**
+   * 宣告了就有**日期區間**篩選，而不是一顆一顆值的清單。回傳
+   * `YYYY-MM-DD`，沒有日期回傳空字串。
+   *
+   * 日期是唯一一種「每一列都不一樣，但篩選仍然有意義」的欄位——用
+   * `filterValue` 會得到一份每天一個選項的選單。篩的是區間，控制項就得是
+   * 區間，所以這件事必須由欄位自己說，表格猜不到。
+   *
+   * 值存成 `bucket:<id>`（相對，每次讀取重新對時鐘解析）或 `from|to`
+   * （絕對）；見 date-buckets.ts。同一欄不要同時宣告 `filterValue`——兩種
+   * 控制項會搶同一個位置，日期這一個贏。
+   */
+  dateFilterValue?: (row: T) => string;
   /**
    * 複製到剪貼簿時這一欄的純文字值。只有自訂 `cell` 的欄位需要給——
    * 有宣告 `editable` 的欄位表格自己算得出格式化後的文字。
@@ -2716,6 +2735,17 @@ export function ConsoleDataTable<T>({
     });
   }
 
+  /**
+   * 整個取代一欄的篩選值（日期區間用）。空字串＝清掉這一欄，而不是留下一
+   * 個空陣列——空陣列會讓 chip 還在但什麼都沒篩。
+   */
+  function setColumnFilter(columnId: string, value: string) {
+    const next = { ...query.filters };
+    if (value) next[columnId] = [value];
+    else delete next[columnId];
+    patchQuery({ filters: next });
+  }
+
   function clearFilters() {
     patchQuery({ search: "", filters: {} });
   }
@@ -3099,6 +3129,7 @@ export function ConsoleDataTable<T>({
             filterOptions={filterOptions}
             filters={query.filters}
             onToggle={toggleColumnFilter}
+            onSetDate={setColumnFilter}
           />
           <PreferencesDialog
             columns={orderedColumns}
@@ -3143,6 +3174,7 @@ export function ConsoleDataTable<T>({
                 options={filterOptions[column.id] ?? []}
                 selected={query.filters[column.id]!}
                 onToggle={(value) => toggleColumnFilter(column.id, value)}
+                onSetDate={(value) => setColumnFilter(column.id, value)}
                 onClear={() => clearColumnFilter(column.id)}
               />
             ))}
@@ -4558,6 +4590,70 @@ function FilterValuePanel({
 }
 
 /**
+ * 日期區間的篩選面板：相對區間清單 ＋ 一組自訂起訖。
+ *
+ * 相對區間是單選而不是複選——「今天」和「本週」同時成立沒有意義，兩個區間
+ * 的聯集也不是任何人會想要的東西。所以這裡是 radio 的語意，選了就取代。
+ */
+function DateRangeFilterPanel({
+  value,
+  onChange,
+}: {
+  value: string | undefined;
+  onChange: (next: string) => void;
+}) {
+  const custom = value && !value.startsWith("bucket:") ? value : "";
+  const [from = "", to = ""] = custom.split("|");
+
+  return (
+    <div className="flex flex-col gap-1">
+      {DATE_BUCKETS.map((bucket) => {
+        const id = `bucket:${bucket.id}`;
+        return (
+          <button
+            key={bucket.id}
+            type="button"
+            data-date-bucket={bucket.id}
+            onClick={() => onChange(value === id ? "" : id)}
+            className={cn(
+              "hover:bg-accent flex items-center justify-between rounded-md px-1.5 py-1 text-sm",
+              value === id && "bg-accent font-medium",
+            )}
+          >
+            <span>{bucket.label}</span>
+            {value === id && <Check className="size-3.5" />}
+          </button>
+        );
+      })}
+      <div className="border-border mt-1 flex flex-col gap-1 border-t pt-2">
+        <p className="text-muted-foreground px-1.5 text-xs font-medium">自訂</p>
+        <div className="flex items-center gap-1">
+          <Input
+            type="date"
+            aria-label="起"
+            value={from}
+            className="h-7 px-1.5 text-xs"
+            onChange={(e) =>
+              onChange(customRangeValue(e.currentTarget.value, to))
+            }
+          />
+          <span className="text-muted-foreground text-xs">～</span>
+          <Input
+            type="date"
+            aria-label="訖"
+            value={to}
+            className="h-7 px-1.5 text-xs"
+            onChange={(e) =>
+              onChange(customRangeValue(from, e.currentTarget.value))
+            }
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * 分組設定 popover：動態層級清單。已選層級依序列出、每層可移除（連同
  * 較深層一併移除，語意單純）；未達 maxLevels 且還有剩餘欄位時提供
  * 「新增層級」清單。候選欄位＝有 filterValue 的欄位（與可篩選同一集合，
@@ -4831,18 +4927,24 @@ function FilterMenu<T>({
   filterOptions,
   filters,
   onToggle,
+  onSetDate,
 }: {
   columns: ConsoleTableColumn<T>[];
   filterOptions: Record<string, string[]>;
   filters: Record<string, string[]>;
   onToggle: (columnId: string, value: string) => void;
+  /** 日期欄是單選：整個值被取代，不是加進一個集合。 */
+  onSetDate: (columnId: string, value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null);
 
   // 有提供選項的欄位才可篩選——選項由 adapter（client 端運算或後端
   // distinct）提供，表格不再自己從資料推導。
-  const filterableColumns = columns.filter((c) => filterOptions[c.id]);
+  // 日期欄不靠 filterOptions——它的選項是區間，不是資料裡出現過的值。
+  const filterableColumns = columns.filter(
+    (c) => filterOptions[c.id] || c.dateFilterValue,
+  );
   const activeCount = Object.values(filters).reduce(
     (sum, values) => sum + values.length,
     0,
@@ -4893,11 +4995,18 @@ function FilterMenu<T>({
                 {selectedColumn.header}
               </span>
             </div>
-            <FilterValuePanel
-              options={filterOptions[selectedColumn.id] ?? []}
-              selected={filters[selectedColumn.id]}
-              onToggle={(value) => onToggle(selectedColumn.id, value)}
-            />
+            {selectedColumn.dateFilterValue ? (
+              <DateRangeFilterPanel
+                value={filters[selectedColumn.id]?.[0]}
+                onChange={(next) => onSetDate(selectedColumn.id, next)}
+              />
+            ) : (
+              <FilterValuePanel
+                options={filterOptions[selectedColumn.id] ?? []}
+                selected={filters[selectedColumn.id]}
+                onToggle={(value) => onToggle(selectedColumn.id, value)}
+              />
+            )}
           </>
         ) : (
           <div className="flex flex-col gap-1">
@@ -4937,14 +5046,17 @@ function FilterChip<T>({
   options,
   selected,
   onToggle,
+  onSetDate,
   onClear,
 }: {
   column: ConsoleTableColumn<T>;
   options: string[];
   selected: string[];
   onToggle: (value: string) => void;
+  onSetDate: (value: string) => void;
   onClear: () => void;
 }) {
+  const isDate = !!column.dateFilterValue;
   return (
     <span className="border-primary/40 text-primary inline-flex items-center overflow-hidden rounded-md border border-dashed text-xs font-medium">
       <Popover>
@@ -4953,17 +5065,25 @@ function FilterChip<T>({
             <button type="button" className="hover:bg-primary/5 px-2 py-1" />
           }
         >
-          {column.header}：{selected.join("、")}
+          {column.header}：
+          {isDate ? dateFilterLabel(selected[0]) : selected.join("、")}
         </PopoverTrigger>
         <PopoverContent align="start" className="w-56 p-2">
           <p className="text-muted-foreground px-1.5 pb-1.5 text-xs font-medium">
             {column.header}
           </p>
-          <FilterValuePanel
-            options={options}
-            selected={selected}
-            onToggle={onToggle}
-          />
+          {isDate ? (
+            <DateRangeFilterPanel
+              value={selected[0]}
+              onChange={onSetDate}
+            />
+          ) : (
+            <FilterValuePanel
+              options={options}
+              selected={selected}
+              onToggle={onToggle}
+            />
+          )}
         </PopoverContent>
       </Popover>
       <button

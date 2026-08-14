@@ -5323,3 +5323,100 @@ describe("疏密與撐滿高度", () => {
     expect(screen.getByRole("heading")).toHaveTextContent("缺失");
   });
 });
+
+describe("日期區間篩選", () => {
+  /** 到期日欄：一列逾期、一列很遠、一列沒有日期。 */
+  const DATE_COLUMNS: ConsoleTableColumn<Row>[] = [
+    ...COLUMNS,
+    {
+      id: "due",
+      header: "到期",
+      dateFilterValue: (row) =>
+        row.id === "r1" ? "2020-01-01" : row.id === "r2" ? "2999-12-31" : "",
+      cell: (row) => row.id,
+    },
+  ];
+
+  const openFilterMenu = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole("button", { name: "篩選" }));
+  };
+
+  it("日期欄出現在可篩選欄位裡，即使它沒有任何選項值", async () => {
+    const user = userEvent.setup();
+    renderTable({ columns: DATE_COLUMNS });
+    await openFilterMenu(user);
+    expect(screen.getByRole("button", { name: /到期/ })).toBeInTheDocument();
+  });
+
+  it("選的是區間，不是資料裡出現過的日期", async () => {
+    const user = userEvent.setup();
+    renderTable({ columns: DATE_COLUMNS });
+    await openFilterMenu(user);
+    await user.click(screen.getByRole("button", { name: /到期/ }));
+
+    // 一份每天一個選項的清單對到期日毫無用處——這裡給的是區間
+    expect(document.querySelector("[data-date-bucket=today]")).toBeTruthy();
+    expect(document.querySelector("[data-date-bucket=overdue]")).toBeTruthy();
+    expect(screen.getByLabelText("起")).toBeInTheDocument();
+    expect(screen.getByLabelText("訖")).toBeInTheDocument();
+  });
+
+  it("選了區間就只留區間內的列", async () => {
+    const user = userEvent.setup();
+    renderTable({ columns: DATE_COLUMNS, initialPageSize: 30 });
+    await openFilterMenu(user);
+    await user.click(screen.getByRole("button", { name: /到期/ }));
+    await user.click(
+      document.querySelector("[data-date-bucket=overdue]") as HTMLElement,
+    );
+
+    const body = document.querySelector("tbody")!;
+    expect(within(body).getAllByRole("row")).toHaveLength(1);
+  });
+
+  it("chip 顯示區間的名稱，不顯示它今天解析成什麼", async () => {
+    const user = userEvent.setup();
+    renderTable({ columns: DATE_COLUMNS, initialPageSize: 30 });
+    await openFilterMenu(user);
+    await user.click(screen.getByRole("button", { name: /到期/ }));
+    await user.click(
+      document.querySelector("[data-date-bucket=overdue]") as HTMLElement,
+    );
+    await user.keyboard("{Escape}");
+
+    // 顯示解析後的日期會讓人以為那是固定的
+    expect(screen.getByText(/到期：逾期/)).toBeInTheDocument();
+  });
+
+  it("同一個區間再選一次就取消，而且不留下空的 chip", async () => {
+    const user = userEvent.setup();
+    renderTable({ columns: DATE_COLUMNS, initialPageSize: 30 });
+    await openFilterMenu(user);
+    await user.click(screen.getByRole("button", { name: /到期/ }));
+    const overdue = () =>
+      document.querySelector("[data-date-bucket=overdue]") as HTMLElement;
+    await user.click(overdue());
+    await user.click(overdue());
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByText(/到期：/)).not.toBeInTheDocument();
+    expect(within(document.querySelector("tbody")!).getAllByRole("row")).toHaveLength(12);
+  });
+
+  it("區間是單選——換一個就取代，不是兩個聯集", async () => {
+    const user = userEvent.setup();
+    renderTable({ columns: DATE_COLUMNS, initialPageSize: 30 });
+    await openFilterMenu(user);
+    await user.click(screen.getByRole("button", { name: /到期/ }));
+    await user.click(
+      document.querySelector("[data-date-bucket=overdue]") as HTMLElement,
+    );
+    await user.click(
+      document.querySelector("[data-date-bucket=future]") as HTMLElement,
+    );
+    await user.keyboard("{Escape}");
+
+    expect(screen.getByText(/到期：未來/)).toBeInTheDocument();
+    expect(screen.queryByText(/逾期/)).not.toBeInTheDocument();
+  });
+});

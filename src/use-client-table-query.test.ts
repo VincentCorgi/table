@@ -433,3 +433,53 @@ describe("searchValue：搜尋與篩選是兩件事", () => {
     expect(run(plain, { search: "meeting" }).rows.map(key)).toEqual(["3"]);
   });
 });
+
+describe("dateFilterValue：篩的是區間，不是一顆一顆的日期", () => {
+  type Task = { id: string; due: string };
+  const data: Task[] = [
+    { id: "past", due: "2020-01-01" },
+    { id: "none", due: "" },
+    { id: "far", due: "2999-12-31" },
+  ];
+  const columns: ConsoleTableColumn<Task>[] = [
+    { id: "due", header: "到期", dateFilterValue: (t) => t.due, cell: (t) => t.due },
+  ];
+  const key = (t: Task) => t.id;
+  const run = (filters: Record<string, string[]>) =>
+    renderHook(() =>
+      useClientTableQuery(
+        data,
+        { ...createDefaultTableQuery(10), sort: "manual", filters },
+        columns,
+        key,
+      ),
+    ).result.current;
+
+  it("逾期是相對現在算的，不是存下來的那一天", () => {
+    expect(run({ due: ["bucket:overdue"] }).rows.map(key)).toEqual(["past"]);
+  });
+
+  it("未來同理", () => {
+    expect(run({ due: ["bucket:future"] }).rows.map(key)).toEqual(["far"]);
+  });
+
+  it("絕對區間照字面比", () => {
+    expect(run({ due: ["2019-01-01|2021-01-01"] }).rows.map(key)).toEqual([
+      "past",
+    ]);
+  });
+
+  it("沒有日期的列不會被任何區間撈到", () => {
+    expect(run({ due: ["bucket:overdue"] }).rows.map(key)).not.toContain("none");
+    expect(run({ due: ["bucket:future"] }).rows.map(key)).not.toContain("none");
+  });
+
+  it("空值等於沒篩", () => {
+    expect(run({ due: [""] }).rows.map(key)).toEqual(["past", "none", "far"]);
+  });
+
+  it("日期欄不產生一份每天一個選項的選單", () => {
+    // 那正是它需要自己的控制項、而不是共用 filterValue 的原因
+    expect(run({}).filterOptions.due).toBeUndefined();
+  });
+});
