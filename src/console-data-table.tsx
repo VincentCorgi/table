@@ -131,6 +131,16 @@ type ConsoleTableColumnBase<T> = {
    */
   filterValues?: (row: T) => string[];
   /**
+   * 這一欄在群組結尾自己畫什麼。**有給就用它，內建的 COUNT／SUM 讓位**——
+   * 「這一組還剩幾天」「已用 / 預估」這些結論加不出來，它們是使用端算的。
+   *
+   * `complete` 是那個必須一起交出去的判斷：一組兩百筆只揭露二十筆時，那二十
+   * 筆的和看起來就是一個總數、會被當成總數用，而畫面上沒有東西會跟它牴觸。
+   * 內建統計在這種情況顯示破折號；自訂的沒有這個保護，所以判斷交給使用端，
+   * 而不是把它藏起來。
+   */
+  footer?: (rows: T[], coverage: { complete: boolean }) => React.ReactNode;
+  /**
    * 複製到剪貼簿時這一欄的純文字值。只有自訂 `cell` 的欄位需要給——
    * 有宣告 `editable` 的欄位表格自己算得出格式化後的文字。
    *
@@ -767,6 +777,7 @@ export function ConsoleDataTable<T>({
   savingCells,
   cellErrors,
   onRowReorder,
+  canDrop,
   subRowOf,
   onAddSubRow,
   onOpenRow,
@@ -966,6 +977,25 @@ export function ConsoleDataTable<T>({
       parentKey: string | null;
     },
   ) => void;
+  /**
+   * 這個落點放不放得下。**只在有 `onRowReorder` 時才會被問到。**
+   *
+   * 結構上不可能的落點（父列卡進別人的子列中間、子列掉到頂層）表格自己就擋
+   * 掉了；這裡問的是使用端才知道的規則——不同專案之間不能互搬、已完成的項目
+   * 不接受子項目。
+   *
+   * 拖曳中與放開時問的是同一個問題，所以擋掉的落點連插入線都不會畫。「看得
+   * 到線卻放不下去」比「線畫不出來」難懂得多。
+   */
+  canDrop?: (
+    row: T,
+    target: {
+      before: T | null;
+      after: T | null;
+      groupValue: string | null;
+      parentKey: string | null;
+    },
+  ) => boolean;
   /**
    * 子項目：回傳父列的 key，`null` 代表這列自己就是父列。有給才有子項目
    * 能力（比照「有 sortValue 才可排序」的宣告制），沒給的表格行為不變。
@@ -1684,6 +1714,8 @@ export function ConsoleDataTable<T>({
     /** 被拖曳的整串（父列＋它的子列）；視覺上要一起淡出。 */
     movingKeys: string[];
     insertAt: number;
+    /** 目前的落點放不下——插入線不畫。 */
+    blocked?: boolean;
   } | null>(null);
 
   const bodyRef = useRef<HTMLTableSectionElement>(null);
@@ -1752,7 +1784,10 @@ export function ConsoleDataTable<T>({
 
     const onMove = (moveEvent: PointerEvent) => {
       const insertAt = insertIndexAt(moveEvent.clientY);
-      setDragging((prev) => (prev ? { ...prev, insertAt } : prev));
+      // 放開時會問同一個問題。擋掉的落點連線都不畫——看得到線卻放不下去比
+      // 線畫不出來難懂得多。
+      const blocked = !resolveDropTarget(key, insertAt, moveEvent.clientY);
+      setDragging((prev) => (prev ? { ...prev, insertAt, blocked } : prev));
     };
     const onUp = (upEvent: PointerEvent) => {
       handle.removeEventListener("pointermove", onMove);
@@ -1784,15 +1819,20 @@ export function ConsoleDataTable<T>({
     return null;
   }
 
-  function finishRowDrag(key: string, insertAt: number, clientY: number) {
-    setDragging(null);
-    // 索引與歸屬都對「畫出來的列」而言
+  /**
+   * 落點算出來的東西：被拖的列、它的新鄰居與歸屬。回傳 `null` 代表這個落點
+   * 不成立（沒動、或結構上不允許）。
+   *
+   * 抽出來是因為拖曳中與放開時要問**同一個問題**：拖曳中要知道「這裡放得下
+   * 嗎」才畫得出插入線，放開時要知道「放到哪」。兩邊各算一次的話，畫得出線
+   * 卻放不下去是遲早的事。
+   */
+  function resolveDropTarget(key: string, insertAt: number, clientY: number) {
     const visible = selectableRows;
     const from = visible.findIndex((r) => rowKey(r) === key);
     const row = visible[from];
-    if (!row) return;
+    if (!row) return null;
 
-    // 拖父列＝整串移動：子列跟著走，否則一次拖曳就生出一批孤兒
     const movingKeys = new Set([key]);
     if (subRowsEnabled && !isSubRow(row)) {
       for (const other of visible) {
@@ -1800,43 +1840,43 @@ export function ConsoleDataTable<T>({
       }
     }
     const span = movingKeys.size;
-
-    // 落在收合的群組標題上＝丟進那一組的第一個位置
     const collapsedGroup = collapsedGroupAt(clientY);
 
     let landing = insertAt;
     if (!collapsedGroup) {
-      // 沒動就什麼都不做，別讓「點一下把手」也變成一次回報
-      if (landing >= from && landing <= from + span) return;
-
+      if (landing >= from && landing <= from + span) return null;
       if (isSubRow(row)) {
-        // 子列只能落在某個父列的子列區段內。落到區段之外＝要它變成頂層列，
-        // 那是改變「它是什麼」而不是「它在哪」，走編輯把 parent 清掉。
-        if (blockParentAt(visible, landing) === null) return;
+        if (blockParentAt(visible, landing) === null) return null;
       } else {
-        // 父列不能卡在別人的子列中間，那會把那一組父子拆開。把落點推到
-        // 該區段的結尾。
         while (blockParentAt(visible, landing) !== null) landing += 1;
-        if (landing >= from && landing <= from + span) return;
+        if (landing >= from && landing <= from + span) return null;
       }
     }
 
-    // 鄰居是在「抽掉整串被拖曳的列之後」的清單上算的，否則自己會被算成鄰居
     const others = visible.filter((r) => !movingKeys.has(rowKey(r)));
     const adjusted = landing > from ? landing - span : landing;
     const before = others[adjusted - 1] ?? null;
     const after = others[adjusted] ?? null;
-
-    // 歸屬取自落點前一列，落在最前面時取後一列
     const anchor = before ?? after;
-    const groupValue = collapsedGroup ?? (anchor ? groupValueOf(anchor) : null);
-    const parentKey = collapsedGroup
-      ? null
-      : isSubRow(row)
-        ? blockParentAt(visible, landing)
-        : null;
+    const target = {
+      before,
+      after,
+      groupValue: collapsedGroup ?? (anchor ? groupValueOf(anchor) : null),
+      parentKey: collapsedGroup
+        ? null
+        : isSubRow(row)
+          ? blockParentAt(visible, landing)
+          : null,
+    };
+    if (canDrop && !canDrop(row, target)) return null;
+    return { row, target };
+  }
 
-    onRowReorder?.(row, { before, after, groupValue, parentKey });
+  function finishRowDrag(key: string, insertAt: number, clientY: number) {
+    setDragging(null);
+    const resolved = resolveDropTarget(key, insertAt, clientY);
+    if (!resolved) return;
+    onRowReorder?.(resolved.row, resolved.target);
     // 使用者親手排的順序，任何欄位排序都不該再蓋掉它
     if (query.sort !== "manual") patchQuery({ sort: "manual" });
   }
@@ -2083,7 +2123,10 @@ export function ConsoleDataTable<T>({
     });
   }
 
-  const showAggregates = grouping && anyAggregateChosen(aggregates);
+  // 自訂 footer 不受「有沒有選統計」影響——它是欄位宣告的，不是使用者選的。
+  const anyFooter = columns.some((c) => c.footer);
+  const showAggregates =
+    grouping && (anyAggregateChosen(aggregates) || anyFooter);
 
   /**
    * 列是不是整批分塊來的——也就是「這一組到齊了沒」這個問題答不出來。
@@ -3448,9 +3491,11 @@ export function ConsoleDataTable<T>({
                       // 落點插入線畫在「會被推到下面」的那一列上緣；插在最後
                       // 時畫在最後一列的下緣。索引對的是畫出來的列。
                       dragging &&
+                        !dragging.blocked &&
                         dragging.insertAt === visibleIndexByKey.get(key) &&
                         "border-t-primary border-t-2",
                       dragging &&
+                        !dragging.blocked &&
                         dragging.insertAt === selectableRows.length &&
                         visibleIndexByKey.get(key) ===
                           selectableRows.length - 1 &&
@@ -3935,6 +3980,14 @@ export function ConsoleDataTable<T>({
                         <TableCell className={leadingCellWidth} />
                         {visibleColumns.map((column) => {
                           const outcome = aggregateOutcome(groupKey, column);
+                          const custom = column.footer?.(
+                            loadedRowsByGroup.get(groupKey) ?? [],
+                            {
+                              complete:
+                                !chunkedLoading &&
+                                !(groupHasMore?.[groupKey] ?? false),
+                            },
+                          );
                           return (
                             <TableCell
                               key={column.id}
@@ -3943,7 +3996,9 @@ export function ConsoleDataTable<T>({
                                 ALIGN_CLASS[columnAlign(column)],
                               )}
                             >
-                              {outcome.kind === "value" ? (
+                              {column.footer ? (
+                                custom
+                              ) : outcome.kind === "value" ? (
                                 <AggregateValue
                                   column={column}
                                   aggregate={aggregates[column.id] ?? "none"}

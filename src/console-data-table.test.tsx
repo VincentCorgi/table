@@ -5446,3 +5446,153 @@ describe("整列的狀態性強調", () => {
     expect(bodyRows()[0].className).not.toContain("undefined");
   });
 });
+
+describe("每欄自己的群組結尾", () => {
+  async function groupBy(
+    user: ReturnType<typeof userEvent.setup>,
+    label: string,
+  ) {
+    await user.click(screen.getByRole("button", { name: "分組" }));
+    const menu = document.querySelector(
+      '[data-slot="popover-content"]',
+    ) as HTMLElement;
+    await user.click(within(menu).getByRole("button", { name: label }));
+    await user.keyboard("{Escape}");
+  }
+
+  const footerRow = () =>
+    document.querySelector('[data-slot="group-aggregates"]') as HTMLElement;
+
+  const withFooter = (
+    footer: ConsoleTableColumn<Row>["footer"],
+  ): ConsoleTableColumn<Row>[] =>
+    COLUMNS.map((c) => (c.id === "qty" ? { ...c, footer } : c));
+
+  it("宣告了 footer 就會有統計列，不必先選統計", async () => {
+    const user = userEvent.setup();
+    renderTable({
+      columns: withFooter((rows) => `${rows.length} 件`),
+      pagination: "scroll",
+    });
+    await groupBy(user, "類別");
+    expect(footerRow()).toBeInTheDocument();
+    expect(within(footerRow()).getByText("4 件")).toBeInTheDocument();
+  });
+
+  it("footer 拿到的是這一組的列，不是整張表", async () => {
+    const user = userEvent.setup();
+    renderTable({
+      columns: withFooter((rows) => rows.map((r) => r.group).join("")),
+      pagination: "scroll",
+    });
+    await groupBy(user, "類別");
+    // 每一組都只看得到自己的列
+    const cells = Array.from(
+      document.querySelectorAll('[data-slot="group-aggregates"]'),
+    ).map((r) => r.textContent);
+    expect(cells.every((t) => /^(甲+|乙+|丙+)$/.test(t!.trim()))).toBe(true);
+  });
+
+  it("有 footer 的欄位不再畫內建的 COUNT／SUM", async () => {
+    const user = userEvent.setup();
+    renderTable({
+      columns: withFooter(() => "自己算的"),
+      pagination: "scroll",
+    });
+    await groupBy(user, "類別");
+    expect(within(footerRow()).getByText("自己算的")).toBeInTheDocument();
+    expect(within(footerRow()).queryByText(/COUNT|SUM/)).not.toBeInTheDocument();
+  });
+
+  it("完整與否要交給使用端判斷，不是把它藏起來", async () => {
+    const user = userEvent.setup();
+    renderTable({
+      columns: withFooter((_rows, { complete }) =>
+        complete ? "全部" : "不完整",
+      ),
+      pagination: "scroll",
+      hasMore: true,
+    });
+    await groupBy(user, "類別");
+    // 一組兩百筆只揭露二十筆時，那二十筆的和會被當成總數用——自訂的沒有
+    // 內建統計那層保護，所以判斷必須送到手上
+    expect(within(footerRow()).getByText("不完整")).toBeInTheDocument();
+  });
+});
+
+describe("落點驗證", () => {
+  function renderDraggable(props: TestTableProps = {}) {
+    return renderTable({ pagination: "scroll", initialPageSize: 30, ...props });
+  }
+
+  function stubRowGeometry() {
+    [...document.querySelectorAll("tr[data-row-key]")].forEach((row, i) => {
+      row.getBoundingClientRect = () =>
+        ({ top: i * 20, height: 20, bottom: i * 20 + 20 }) as DOMRect;
+    });
+  }
+
+  function pointer(handle: HTMLElement, type: string, clientY: number) {
+    act(() => {
+      handle.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, pointerId: 1, clientY }),
+      );
+    });
+  }
+
+  function grab(index: number) {
+    const handle = [
+      ...document.querySelectorAll("[data-drag-handle='true']"),
+    ][index] as HTMLElement;
+    handle.setPointerCapture = () => {};
+    handle.releasePointerCapture = () => {};
+    pointer(handle, "pointerdown", 0);
+    return handle;
+  }
+
+  it("使用端說不行的落點不會回報", () => {
+    const onRowReorder = vi.fn();
+    renderDraggable({ onRowReorder, canDrop: () => false });
+    stubRowGeometry();
+    const handle = grab(0);
+    pointer(handle, "pointermove", 130);
+    pointer(handle, "pointerup", 130);
+    expect(onRowReorder).not.toHaveBeenCalled();
+  });
+
+  it("擋掉的落點連插入線都不畫", () => {
+    renderDraggable({ onRowReorder: vi.fn(), canDrop: () => false });
+    stubRowGeometry();
+    const handle = grab(0);
+    pointer(handle, "pointermove", 130);
+    // 看得到線卻放不下去，比線畫不出來難懂得多
+    expect(document.querySelector(".border-t-primary")).toBeNull();
+  });
+
+  it("允許時照常回報，也照常畫線", () => {
+    const onRowReorder = vi.fn();
+    renderDraggable({ onRowReorder, canDrop: () => true });
+    stubRowGeometry();
+    const handle = grab(0);
+    pointer(handle, "pointermove", 130);
+    expect(document.querySelector(".border-t-primary")).not.toBeNull();
+    pointer(handle, "pointerup", 130);
+    expect(onRowReorder).toHaveBeenCalledTimes(1);
+  });
+
+  it("拿得到落點的鄰居與歸屬，才判斷得出「這裡能不能放」", () => {
+    const canDrop = vi.fn(() => true);
+    renderDraggable({ onRowReorder: vi.fn(), canDrop });
+    stubRowGeometry();
+    const handle = grab(0);
+    pointer(handle, "pointermove", 130);
+    expect(canDrop).toHaveBeenCalledWith(
+      expect.objectContaining({ id: expect.any(String) }),
+      expect.objectContaining({
+        before: expect.anything(),
+        groupValue: null,
+        parentKey: null,
+      }),
+    );
+  });
+});
